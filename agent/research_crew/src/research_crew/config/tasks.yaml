@@ -1,0 +1,79 @@
+correlate_incident:
+  description: >
+    Analyze all logs collected between {startTime} and {endTime}. Reconstruct
+    the complete sequence of events across all services.
+
+    Identify:
+      - Which service first exhibited abnormal behavior.
+      - The chronological order of significant events.
+      - Which downstream services were affected.
+      - Which services remained unaffected.
+      - Any cascading failures, retries, or timeouts.
+
+    Produce only factual observations supported by the logs. Do not speculate
+    about the underlying cause.
+
+  expected_output: >
+    A structured incident timeline including:
+      - Ordered event timeline
+      - Services involved
+      - Primary symptoms
+      - Cascading effects
+      - Supporting log evidence
+
+  agent: correlator
+
+investigate_root_cause:
+  description: >
+    Using the event timeline from the Correlator, determine the most probable
+    root cause of the incident.
+
+    Use semantic similarity search and historical incident records to:
+      - Find similar incidents.
+      - Compare current symptoms with historical failures.
+      - Identify the most likely underlying cause.
+      - Rank alternative hypotheses by confidence.
+      - Support every conclusion with evidence.
+
+  expected_output: >
+    A root cause analysis containing:
+      - Most probable root cause
+      - Alternative hypotheses
+      - Confidence score for each hypothesis
+      - Evidence from current logs
+      - Relevant historical incidents
+      - Explanation of why the failure propagated
+
+  context:
+    - correlate_incident
+
+  agent: root_cause
+
+
+generate_incident_report:
+  description: >
+    Generate a production-ready incident report using the Correlator's event
+    timeline and the Root Cause analysis.
+
+    The report should include:
+      - Executive summary
+      - Incident timeline
+      - Affected services
+      - Root cause
+      - Customer impact
+      - Confidence assessment
+      - Immediate mitigation steps
+      - Long-term recommendations
+      - Suggested incident severity
+      - Outstanding unknowns
+
+    Write the report in Markdown suitable for engineers and stakeholders.
+
+  expected_output: >
+    A complete Markdown incident report.
+
+  context:
+    - correlate_incident
+    - investigate_root_cause
+
+  agent: responder

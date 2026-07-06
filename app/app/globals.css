@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/* ─── Design tokens ───────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --bg-base:      #090d16;
+  --bg-surface:   #0d1422;
+  --bg-elevated:  #121c30;
+  --bg-hover:     #172038;
+
+  /* Borders */
+  --border-subtle: #182030;
+  --border:        #1f2d42;
+  --border-strong: #2a3d56;
+
+  /* Ink */
+  --text-1: #dce2f0;   /* primary */
+  --text-2: #6b7a96;   /* secondary */
+  --text-3: #374460;   /* muted */
+
+  /* Accent */
+  --accent:        #3987e5;
+  --accent-dim:    rgba(57, 135, 229, 0.10);
+  --accent-border: rgba(57, 135, 229, 0.22);
+
+  /* Status (reference palette — fixed, never themed) */
+  --s-critical: #d03b3b;
+  --s-error:    #e07845;
+  --s-warning:  #d4950a;
+  --s-info:     #3987e5;
+  --s-debug:    #566680;
+
+  /* Chart categorical (reference palette dark steps) */
+  --cat-1: #3987e5;
+  --cat-2: #199e70;
+  --cat-3: #c98500;
+  --cat-4: #008300;
+  --cat-5: #9085e9;
+
+  /* Chart chrome */
+  --chart-bg:   #0d1422;
+  --grid-line:  #182030;
+  --axis-text:  #445060;
+}
+
+/* ─── Baseline ────────────────────────────────────────────────────── */
+html { color-scheme: dark; }
+body {
+  background: var(--bg-base);
+  color: var(--text-1);
+  font-family: var(--font-geist-sans, system-ui, sans-serif);
+}
+
+/* ─── Hover utilities (can't use onMouse* in server components) ──── */
+.row-hover:hover        { background: var(--bg-elevated); }
+.link-hover:hover       { color: var(--text-2) !important; }
+.link-accent-hover:hover { color: var(--accent); }
+
+/* ─── Scrollbar ───────────────────────────────────────────────────── */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+*::-webkit-scrollbar { width: 4px; height: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }

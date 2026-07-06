@@ -1,0 +1,21 @@
+# Env — never commit real secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+
+# macOS / editors
+.DS_Store
+Thumbs.db
+
+# crewAI outputs
+output/
