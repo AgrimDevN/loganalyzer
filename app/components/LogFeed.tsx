@@ -75,16 +75,40 @@ export function LogFeed() {
     try {
       const res = await fetch("/demo-logs.json");
       const demoLogs: DemoLog[] = await res.json();
-      const total = demoLogs.length;
+      const count = demoLogs.length;
 
-      for (let i = 0; i < total; i += BATCH_SIZE) {
-        const batch = demoLogs.slice(i, i + BATCH_SIZE);
-        await fetch("/api/logs/ingest", {
+      // Remap timestamps to "now" so they show up in /api/logs/recent after reload
+      const now = Date.now();
+      const firstTs = new Date(demoLogs[0].timestamp).getTime();
+      const span = new Date(demoLogs[count - 1].timestamp).getTime() - firstTs;
+      const startAt = now - span;
+
+      for (let i = 0; i < count; i += BATCH_SIZE) {
+        const batch = demoLogs.slice(i, i + BATCH_SIZE).map((log) => ({
+          ...log,
+          timestamp: new Date(startAt + (new Date(log.timestamp).getTime() - firstTs)).toISOString(),
+        }));
+
+        const insertRes = await fetch("/api/logs/ingest", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(batch),
         });
-        setDemoProgress(Math.round(((i + batch.length) / total) * 100));
+        const { inserted } = (await insertRes.json()) as { inserted: Log[] };
+
+        // Add directly to state — SSE won't relay across serverless instances on Vercel
+        setLogs((p) => {
+          const next = [...p];
+          for (const log of inserted) {
+            if (seenIds.current.has(log.id)) continue;
+            seenIds.current.add(log.id);
+            next.push(log);
+          }
+          return next.slice(-800);
+        });
+        setTotal((c) => c + inserted.length);
+
+        setDemoProgress(Math.round(((i + batch.length) / count) * 100));
         await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
       }
     } finally {
