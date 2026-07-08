@@ -25,38 +25,23 @@ function isValidLog(entry: unknown): entry is IncomingLog {
 const ALERT_SEVERITIES = new Set(["critical", "error"]);
 const AGENT_URL = process.env.AGENT_SERVICE_URL ?? "http://localhost:8000";
 
-// Debounce state — module-level so it persists across requests in the same process
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let firstElevatedAt: Date | null = null;
-let lastElevatedAt: Date | null = null;
+// Fire-and-forget: call /analyze immediately. Render responds with {"status":"queued"}
+// instantly and runs the crew in the background. The Python-side lock prevents
+// duplicate concurrent runs if multiple elevated logs arrive in quick succession.
+function triggerAnalysis(logTimestamp: Date) {
+  const startTime = new Date(logTimestamp.getTime() - 5 * 60 * 1000);
+  const endTime = new Date(logTimestamp.getTime() + 5 * 60 * 1000);
 
-// Fires once, 5s after the LAST elevated log — covers the full incident window
-function scheduleAnalysis(logTimestamp: Date) {
-  if (!firstElevatedAt) firstElevatedAt = logTimestamp;
-  lastElevatedAt = logTimestamp;
-
-  if (debounceTimer) clearTimeout(debounceTimer);
-
-  debounceTimer = setTimeout(() => {
-    const startTime = new Date(firstElevatedAt!.getTime() - 5 * 60 * 1000);
-    const endTime = new Date(lastElevatedAt!.getTime() + 5 * 60 * 1000);
-
-    fetch(`${AGENT_URL}/analyze`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
-      }),
-    }).catch((err) => {
-      console.warn("Analysis service unreachable, skipping crew trigger:", err);
-    });
-
-    // Reset for next incident
-    firstElevatedAt = null;
-    lastElevatedAt = null;
-    debounceTimer = null;
-  }, 5_000);
+  fetch(`${AGENT_URL}/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      startTime: startTime.toISOString(),
+      endTime: endTime.toISOString(),
+    }),
+  }).catch((err) => {
+    console.warn("Analysis service unreachable, skipping crew trigger:", err);
+  });
 }
 
 async function embedMessages(messages: string[]): Promise<(number[] | null)[]> {
@@ -117,7 +102,7 @@ export async function POST(request: NextRequest) {
     logEvents.emit("log", row);
 
     if (ALERT_SEVERITIES.has(row.severity)) {
-      scheduleAnalysis(row.createdAt);
+      triggerAnalysis(row.createdAt);
     }
   }
 
