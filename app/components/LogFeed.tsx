@@ -10,13 +10,25 @@ type Log = {
   createdAt: string;
 };
 
+type DemoLog = {
+  serviceName: string;
+  severity: string;
+  message: string;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+};
+
 const SEV_ORDER = ["all", "critical", "error", "warning", "info", "debug"];
+const BATCH_SIZE = 10;
+const BATCH_DELAY_MS = 100;
 
 export function LogFeed() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [filter, setFilter] = useState("all");
   const [paused, setPaused] = useState(false);
   const [total, setTotal] = useState(0);
+  const [demoRunning, setDemoRunning] = useState(false);
+  const [demoProgress, setDemoProgress] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pausedRef = useRef(false);
   const bufRef = useRef<Log[]>([]);
@@ -31,11 +43,9 @@ export function LogFeed() {
   }, [paused]);
 
   useEffect(() => {
-    // Load recent history first so logs persist across navigations
     fetch("/api/logs/recent?limit=100")
       .then((r) => r.json())
       .then((recent: Log[]) => {
-        // DB returns newest-first; reverse so oldest appears at top
         const ordered = [...recent].reverse();
         for (const log of ordered) seenIds.current.add(log.id);
         setLogs(ordered);
@@ -46,7 +56,6 @@ export function LogFeed() {
     const es = new EventSource("/api/logs/stream");
     es.onmessage = (e) => {
       const log = JSON.parse(e.data) as Log;
-      // Skip logs already loaded from history to avoid duplicates
       if (seenIds.current.has(log.id)) return;
       seenIds.current.add(log.id);
       setTotal((c) => c + 1);
@@ -59,6 +68,30 @@ export function LogFeed() {
   useEffect(() => {
     if (!paused) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs, paused]);
+
+  async function runDemo() {
+    setDemoRunning(true);
+    setDemoProgress(0);
+    try {
+      const res = await fetch("/demo-logs.json");
+      const demoLogs: DemoLog[] = await res.json();
+      const total = demoLogs.length;
+
+      for (let i = 0; i < total; i += BATCH_SIZE) {
+        const batch = demoLogs.slice(i, i + BATCH_SIZE);
+        await fetch("/api/logs/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(batch),
+        });
+        setDemoProgress(Math.round(((i + batch.length) / total) * 100));
+        await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
+      }
+    } finally {
+      setDemoRunning(false);
+      setDemoProgress(0);
+    }
+  }
 
   const visible =
     filter === "all" ? logs : logs.filter((l) => l.severity.toLowerCase() === filter);
@@ -96,10 +129,7 @@ export function LogFeed() {
 
         {/* Controls */}
         <div className="flex items-center gap-3 shrink-0">
-          <span
-            className="text-[11px] font-mono"
-            style={{ color: "var(--text-3)" }}
-          >
+          <span className="text-[11px] font-mono" style={{ color: "var(--text-3)" }}>
             {total.toLocaleString()} events
           </span>
 
@@ -127,6 +157,21 @@ export function LogFeed() {
               ? `Resume${bufRef.current.length > 0 ? ` (+${bufRef.current.length})` : ""}`
               : "Pause"}
           </button>
+
+          <button
+            onClick={runDemo}
+            disabled={demoRunning}
+            className="text-[11px] px-2.5 py-1 rounded transition-all duration-100"
+            style={{
+              background: demoRunning ? "var(--accent-dim)" : "var(--bg-elevated)",
+              border: "1px solid var(--accent-border)",
+              color: demoRunning ? "var(--text-2)" : "var(--accent)",
+              opacity: demoRunning ? 0.7 : 1,
+              cursor: demoRunning ? "not-allowed" : "pointer",
+            }}
+          >
+            {demoRunning ? `Replaying… ${demoProgress}%` : "Run Demo"}
+          </button>
         </div>
       </div>
 
@@ -134,11 +179,24 @@ export function LogFeed() {
       <div className="flex-1 overflow-y-auto" style={{ fontFamily: "var(--font-geist-mono, monospace)" }}>
         {visible.length === 0 ? (
           <div
-            className="flex flex-col items-center justify-center h-40 gap-2 text-[13px]"
+            className="flex flex-col items-center justify-center h-full gap-4 text-[13px]"
             style={{ color: "var(--text-3)" }}
           >
-            <span>—</span>
-            <span>Waiting for log events…</span>
+            <span style={{ fontSize: "2rem" }}>📭</span>
+            <span>No logs yet</span>
+            <button
+              onClick={runDemo}
+              disabled={demoRunning}
+              className="text-[12px] px-4 py-2 rounded-md transition-all duration-100"
+              style={{
+                background: "var(--accent-dim)",
+                border: "1px solid var(--accent-border)",
+                color: "var(--accent)",
+                cursor: demoRunning ? "not-allowed" : "pointer",
+              }}
+            >
+              {demoRunning ? `Replaying… ${demoProgress}%` : "Run Demo — stream 1 000+ sample logs"}
+            </button>
           </div>
         ) : (
           visible.map((log) => <LogRow key={log.id} log={log} />)
