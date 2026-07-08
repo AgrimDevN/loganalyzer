@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { db } from "@/db/client";
 import { logs, users } from "@/db/schema";
 import { logEvents } from "@/lib/log-events";
@@ -49,17 +50,19 @@ function triggerAnalysis(logTimestamp: Date, userId: number) {
   const startTime = new Date(logTimestamp.getTime() - 5 * 60 * 1000);
   const endTime = new Date(logTimestamp.getTime() + 5 * 60 * 1000);
 
-  fetch(`${AGENT_URL}/analyze`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      startTime: startTime.toISOString(),
-      endTime: endTime.toISOString(),
-      userId,
-    }),
-  }).catch((err) => {
-    console.warn("Analysis service unreachable, skipping crew trigger:", err);
-  });
+  waitUntil(
+    fetch(`${AGENT_URL}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        userId,
+      }),
+    }).catch((err) => {
+      console.warn("Analysis service unreachable, skipping crew trigger:", err);
+    })
+  );
 }
 
 async function embedMessages(messages: string[]): Promise<(number[] | null)[]> {
