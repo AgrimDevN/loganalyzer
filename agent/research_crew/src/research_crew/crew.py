@@ -4,10 +4,7 @@ from crewai.project import CrewBase, agent, crew, task
 from .tools.log_tools import get_past_incidents, semantic_search
 
 def _get_llm() -> LLM:
-    return LLM(
-        model="ollama/llama3.2:1b",
-        base_url="http://localhost:11434",
-    )
+    return LLM(model="groq/llama-3.1-8b-instant")
 
 
 @CrewBase

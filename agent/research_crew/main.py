@@ -7,14 +7,15 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
+import httpx
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
-from sentence_transformers import SentenceTransformer
 
 from research_crew.analyzer import run_analysis
 
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L12-v2")
 app = FastAPI()
+
+HF_API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L12-v2"
 
 
 class AnalyzeRequest(BaseModel):
@@ -29,8 +30,22 @@ def health():
 
 @app.post("/embed")
 def embed(items: list[str]):
-    embeddings = model.encode(items)
-    return embeddings.tolist()
+    hf_key = os.environ.get("HF_API_KEY")
+    if not hf_key:
+        # No embedding service configured — return nulls, logs stored without vectors
+        return [None] * len(items)
+    try:
+        r = httpx.post(
+            HF_API_URL,
+            headers={"Authorization": f"Bearer {hf_key}"},
+            json={"inputs": items},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f"[embed] HuggingFace API error: {e}", flush=True)
+        return [None] * len(items)
 
 
 @app.post("/analyze")
