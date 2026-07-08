@@ -65,27 +65,6 @@ function triggerAnalysis(logTimestamp: Date, userId: number) {
   );
 }
 
-async function embedMessages(messages: string[]): Promise<(number[] | null)[]> {
-  try {
-    const response = await fetch(`${AGENT_URL}/embed`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(messages),
-    });
-
-    if (!response.ok) {
-      console.warn(`Embedding service returned ${response.status}`);
-      return messages.map(() => null);
-    }
-
-    const embeddings: number[][] = await response.json();
-    return embeddings;
-  } catch (err) {
-    console.warn("Embedding service unreachable, inserting logs without embeddings:", err);
-    return messages.map(() => null);
-  }
-}
-
 export async function POST(request: NextRequest) {
   const userId = await resolveUserId(request);
   if (userId === null) {
@@ -110,18 +89,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const embeddings = await embedMessages(validEntries.map((entry) => entry.message));
-
   const inserted = await db
     .insert(logs)
     .values(
-      validEntries.map((entry, i) => ({
+      validEntries.map((entry) => ({
         userId,
         serviceName: entry.serviceName,
         severity: entry.severity,
         message: entry.message,
         metadata: entry.metadata ?? null,
-        embedding: embeddings[i] ?? null,
+        embedding: null,
         createdAt: new Date(entry.timestamp),
       }))
     )
