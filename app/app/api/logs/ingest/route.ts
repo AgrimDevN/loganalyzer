@@ -46,9 +46,10 @@ async function resolveUserId(request: NextRequest): Promise<number | null> {
 const ALERT_SEVERITIES = new Set(["critical", "error"]);
 const AGENT_URL = process.env.AGENT_SERVICE_URL ?? "http://localhost:8000";
 
-function triggerAnalysis(logTimestamp: Date, userId: number) {
-  const startTime = new Date(logTimestamp.getTime() - 5 * 60 * 1000);
-  const endTime = new Date(logTimestamp.getTime() + 5 * 60 * 1000);
+function triggerAnalysis(elevated: { createdAt: Date }[], userId: number) {
+  const times = elevated.map((r) => r.createdAt.getTime());
+  const startTime = new Date(Math.min(...times) - 5 * 60 * 1000);
+  const endTime = new Date(Math.max(...times) + 5 * 60 * 1000);
 
   waitUntil(
     fetch(`${AGENT_URL}/analyze`, {
@@ -60,7 +61,7 @@ function triggerAnalysis(logTimestamp: Date, userId: number) {
         userId,
       }),
     }).catch((err) => {
-      console.warn("Analysis service unreachable, skipping crew trigger:", err);
+      console.warn("Analysis service unreachable:", err);
     })
   );
 }
@@ -120,12 +121,14 @@ export async function POST(request: NextRequest) {
     )
     .returning();
 
+  const elevated = inserted.filter((r) => ALERT_SEVERITIES.has(r.severity));
+
   for (const row of inserted) {
     logEvents.emit(`log:${userId}`, row);
+  }
 
-    if (ALERT_SEVERITIES.has(row.severity)) {
-      triggerAnalysis(row.createdAt, userId);
-    }
+  if (elevated.length > 0) {
+    triggerAnalysis(elevated, userId);
   }
 
   return NextResponse.json({ inserted }, { status: 201 });

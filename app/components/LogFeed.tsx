@@ -117,6 +117,18 @@ export function LogFeed() {
         setDemoProgress(Math.round(((i + batch.length) / count) * 100));
         await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
       }
+
+      // Trigger one analysis covering the full demo window
+      const endTime = new Date();
+      const startTime = new Date(endTime.getTime() - 60 * 60 * 1000);
+      await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startTime: startTime.toISOString(),
+          endTime: endTime.toISOString(),
+        }),
+      });
     } finally {
       setDemoRunning(false);
       setDemoProgress(0);
