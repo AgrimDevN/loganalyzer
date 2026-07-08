@@ -2,28 +2,32 @@ import { db } from "@/db/client";
 import { sql } from "drizzle-orm";
 import { incidents, alerts } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Database, Zap, AlertTriangle, Bell } from "lucide-react";
 import { SeverityDot } from "@/components/SeverityBadge";
 import { LogVolumeChart } from "@/components/LogVolumeChart";
 import { SeverityDonut } from "@/components/SeverityDonut";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-async function getDashboardData() {
+async function getDashboardData(uid: number) {
   const [totals, bySeverity, activeAlerts, hourly, recentIncidents, recentAlerts] =
     await Promise.all([
       db.execute(sql`
         SELECT
-          (SELECT COUNT(*)::int FROM logs)                                      AS total_logs,
-          (SELECT COUNT(*)::int FROM logs WHERE severity IN ('critical','error')) AS error_logs,
-          (SELECT COUNT(*)::int FROM incidents)                                  AS total_incidents
+          (SELECT COUNT(*)::int FROM logs WHERE user_id = ${uid})                                        AS total_logs,
+          (SELECT COUNT(*)::int FROM logs WHERE user_id = ${uid} AND severity IN ('critical','error'))   AS error_logs,
+          (SELECT COUNT(*)::int FROM incidents WHERE user_id = ${uid})                                   AS total_incidents
       `),
       db.execute(sql`
-        SELECT severity, COUNT(*)::int AS count FROM logs GROUP BY severity
+        SELECT severity, COUNT(*)::int AS count FROM logs WHERE user_id = ${uid} GROUP BY severity
       `),
       db.execute(sql`
-        SELECT COUNT(*)::int AS count FROM alerts WHERE dispatched = false
+        SELECT COUNT(*)::int AS count FROM alerts
+        WHERE dispatched = false
+          AND incident_id IN (SELECT id FROM incidents WHERE user_id = ${uid})
       `),
       db.execute(sql`
         SELECT
@@ -31,11 +35,11 @@ async function getDashboardData() {
           severity,
           COUNT(*)::int AS count
         FROM logs
-        WHERE created_at >= NOW() - INTERVAL '24 hours'
+        WHERE created_at >= NOW() - INTERVAL '24 hours' AND user_id = ${uid}
         GROUP BY date_trunc('hour', created_at), hour, severity
         ORDER BY date_trunc('hour', created_at) ASC
       `),
-      db.select().from(incidents).orderBy(desc(incidents.createdAt)).limit(6),
+      db.select().from(incidents).where(eq(incidents.userId, uid)).orderBy(desc(incidents.createdAt)).limit(6),
       db
         .select({
           id: alerts.id,
@@ -47,6 +51,7 @@ async function getDashboardData() {
         })
         .from(alerts)
         .leftJoin(incidents, eq(alerts.incidentId, incidents.id))
+        .where(eq(incidents.userId, uid))
         .orderBy(desc(alerts.createdAt))
         .limit(7),
     ]);
@@ -98,7 +103,9 @@ function Stat({
 }
 
 export default async function DashboardPage() {
-  const d = await getDashboardData();
+  const session = await getSession();
+  if (!session) redirect("/login");
+  const d = await getDashboardData(session.userId);
 
   return (
     <div className="px-7 py-6 max-w-[1320px] mx-auto space-y-5">
