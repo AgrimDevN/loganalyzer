@@ -23,7 +23,7 @@ def _get_conn():
     return psycopg2.connect(DATABASE_URL)
 
 
-def fetch_logs(start_time: str, end_time: str) -> list[dict]:
+def fetch_logs(start_time: str, end_time: str, user_id: int) -> list[dict]:
     conn = _get_conn()
     try:
         with conn.cursor() as cur:
@@ -31,11 +31,11 @@ def fetch_logs(start_time: str, end_time: str) -> list[dict]:
                 """
                 SELECT service_name, severity, message, created_at
                 FROM logs
-                WHERE created_at >= %s AND created_at <= %s
+                WHERE created_at >= %s AND created_at <= %s AND user_id = %s
                 ORDER BY created_at ASC
                 LIMIT 500
                 """,
-                (start_time, end_time),
+                (start_time, end_time, user_id),
             )
             return [
                 {
@@ -65,7 +65,7 @@ def _extract_section(report: str, header: str) -> str:
     return "\n".join(section_lines).strip()
 
 
-def store_incident(report: str):
+def store_incident(report: str, user_id: int):
     title = "Incident Detected"
     for line in report.strip().split("\n"):
         if line.startswith("#"):
@@ -87,8 +87,8 @@ def store_incident(report: str):
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO incidents (title, root_cause, related_log_ids) VALUES (%s, %s, %s) RETURNING id",
-                (title, root_cause, json.dumps([])),
+                "INSERT INTO incidents (user_id, title, root_cause, related_log_ids) VALUES (%s, %s, %s, %s) RETURNING id",
+                (user_id, title, root_cause, json.dumps([])),
             )
             incident_id = cur.fetchone()[0]
             cur.execute(
@@ -100,13 +100,13 @@ def store_incident(report: str):
         conn.close()
 
 
-def run_analysis(start_time: str, end_time: str):
+def run_analysis(start_time: str, end_time: str, user_id: int):
     if not _lock.acquire(blocking=False):
         print("[analyze] Crew already running, skipping this window.", flush=True)
         return None
 
     try:
-        logs = fetch_logs(start_time, end_time)
+        logs = fetch_logs(start_time, end_time, user_id)
         elevated = [l for l in logs if l["severity"] in ("critical", "error")]
 
         if not elevated:
@@ -122,7 +122,7 @@ def run_analysis(start_time: str, end_time: str):
             "endTime": end_time,
             "logs_json": json.dumps(elevated),
         })
-        store_incident(result.raw)
+        store_incident(result.raw, user_id)
         print("[analyze] Incident stored.", flush=True)
         return result.raw
     except Exception as e:

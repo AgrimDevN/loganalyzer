@@ -20,9 +20,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 });
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const apiKey = crypto.randomUUID().replace(/-/g, "");
     const [user] = await db
       .insert(users)
-      .values({ email: email.toLowerCase(), name, passwordHash })
+      .values({ email: email.toLowerCase(), name, passwordHash, apiKey })
       .returning();
 
     await createSession(user.id);

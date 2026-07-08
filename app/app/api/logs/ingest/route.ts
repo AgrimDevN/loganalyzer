@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/client";
-import { logs } from "@/db/schema";
+import { logs, users } from "@/db/schema";
 import { logEvents } from "@/lib/log-events";
+import { getSession } from "@/lib/auth";
+import { eq } from "drizzle-orm";
 
 type IncomingLog = {
   serviceName: string;
@@ -22,13 +24,28 @@ function isValidLog(entry: unknown): entry is IncomingLog {
   );
 }
 
+async function resolveUserId(request: NextRequest): Promise<number | null> {
+  // Session cookie — used by the dashboard and the in-browser demo replay
+  const session = await getSession();
+  if (session) return session.userId;
+
+  // X-Api-Key header — used by external services / curl / replay scripts
+  const apiKey = request.headers.get("X-Api-Key");
+  if (apiKey) {
+    const [user] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.apiKey, apiKey));
+    return user?.id ?? null;
+  }
+
+  return null;
+}
+
 const ALERT_SEVERITIES = new Set(["critical", "error"]);
 const AGENT_URL = process.env.AGENT_SERVICE_URL ?? "http://localhost:8000";
 
-// Fire-and-forget: call /analyze immediately. Render responds with {"status":"queued"}
-// instantly and runs the crew in the background. The Python-side lock prevents
-// duplicate concurrent runs if multiple elevated logs arrive in quick succession.
-function triggerAnalysis(logTimestamp: Date) {
+function triggerAnalysis(logTimestamp: Date, userId: number) {
   const startTime = new Date(logTimestamp.getTime() - 5 * 60 * 1000);
   const endTime = new Date(logTimestamp.getTime() + 5 * 60 * 1000);
 
@@ -38,6 +55,7 @@ function triggerAnalysis(logTimestamp: Date) {
     body: JSON.stringify({
       startTime: startTime.toISOString(),
       endTime: endTime.toISOString(),
+      userId,
     }),
   }).catch((err) => {
     console.warn("Analysis service unreachable, skipping crew trigger:", err);
@@ -66,8 +84,15 @@ async function embedMessages(messages: string[]): Promise<(number[] | null)[]> {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json().catch(() => null);
+  const userId = await resolveUserId(request);
+  if (userId === null) {
+    return NextResponse.json(
+      { error: "Unauthorized: provide a session cookie or X-Api-Key header" },
+      { status: 401 }
+    );
+  }
 
+  const body = await request.json().catch(() => null);
   if (body === null) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -88,6 +113,7 @@ export async function POST(request: NextRequest) {
     .insert(logs)
     .values(
       validEntries.map((entry, i) => ({
+        userId,
         serviceName: entry.serviceName,
         severity: entry.severity,
         message: entry.message,
@@ -99,10 +125,10 @@ export async function POST(request: NextRequest) {
     .returning();
 
   for (const row of inserted) {
-    logEvents.emit("log", row);
+    logEvents.emit(`log:${userId}`, row);
 
     if (ALERT_SEVERITIES.has(row.severity)) {
-      triggerAnalysis(row.createdAt);
+      triggerAnalysis(row.createdAt, userId);
     }
   }
 

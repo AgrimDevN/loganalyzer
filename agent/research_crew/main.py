@@ -21,6 +21,7 @@ HF_API_URL = "https://api-inference.huggingface.co/models/sentence-transformers/
 class AnalyzeRequest(BaseModel):
     startTime: str
     endTime: str
+    userId: int
 
 
 @app.get("/health")
@@ -50,5 +51,5 @@ def embed(items: list[str]):
 
 @app.post("/analyze")
 async def analyze(payload: AnalyzeRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(run_analysis, payload.startTime, payload.endTime)
+    background_tasks.add_task(run_analysis, payload.startTime, payload.endTime, payload.userId)
     return {"status": "queued"}

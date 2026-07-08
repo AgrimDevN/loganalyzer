@@ -1,14 +1,15 @@
 import { logEvents } from "@/lib/log-events";
 import { logs } from "@/db/schema";
+import { getSession } from "@/lib/auth";
 
 type LogRow = typeof logs.$inferSelect;
 
 export async function GET() {
-  const encoder = new TextEncoder();
+  const session = await getSession();
+  if (!session) return new Response("Unauthorized", { status: 401 });
 
-  // Declared outside start() so cancel() can reference the same function
-  // reference to remove it -- otherwise the listener stays attached to the
-  // shared emitter forever after the client disconnects.
+  const eventName = `log:${session.userId}`;
+  const encoder = new TextEncoder();
   let handleNewLog: (log: LogRow) => void;
 
   const stream = new ReadableStream({
@@ -17,15 +18,10 @@ export async function GET() {
         const sseMessage = `data: ${JSON.stringify(log)}\n\n`;
         controller.enqueue(encoder.encode(sseMessage));
       };
-
-      // Start listening for log events
-      logEvents.on("log", handleNewLog);
+      logEvents.on(eventName, handleNewLog);
     },
     cancel() {
-      // Called when the client disconnects (tab closed, EventSource
-      // reconnecting, etc). Without this, the listener above leaks and
-      // throws on every future emit() once the controller is closed.
-      logEvents.off("log", handleNewLog);
+      logEvents.off(eventName, handleNewLog);
     },
   });
 

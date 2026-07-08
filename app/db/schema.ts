@@ -14,11 +14,13 @@ export const users = pgTable("users", {
   email: text("email").unique().notNull(),
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
+  apiKey: text("api_key").unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const logs = pgTable("logs", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
   serviceName: text("service_name").notNull(),
   severity: text("severity").notNull(),
   message: text("message").notNull(),
@@ -29,6 +31,7 @@ export const logs = pgTable("logs", {
 
 export const incidents = pgTable("incidents", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
   title: text("title").notNull(),
   rootCause: text("root_cause"),
   relatedLogIds: jsonb("related_log_ids"),

@@ -1,23 +1,31 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db/client";
 import { sql } from "drizzle-orm";
+import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const uid = session.userId;
+
   try {
     const [bySeverity, totals, activeAlerts, hourly] = await Promise.all([
       db.execute(sql`
-        SELECT severity, COUNT(*)::int AS count FROM logs GROUP BY severity
+        SELECT severity, COUNT(*)::int AS count FROM logs WHERE user_id = ${uid} GROUP BY severity
       `),
       db.execute(sql`
         SELECT
-          (SELECT COUNT(*)::int FROM logs) AS total_logs,
-          (SELECT COUNT(*)::int FROM logs WHERE severity IN ('critical','error')) AS error_logs,
-          (SELECT COUNT(*)::int FROM incidents) AS total_incidents
+          (SELECT COUNT(*)::int FROM logs WHERE user_id = ${uid}) AS total_logs,
+          (SELECT COUNT(*)::int FROM logs WHERE user_id = ${uid} AND severity IN ('critical','error')) AS error_logs,
+          (SELECT COUNT(*)::int FROM incidents WHERE user_id = ${uid}) AS total_incidents
       `),
       db.execute(sql`
-        SELECT COUNT(*)::int AS count FROM alerts WHERE dispatched = false
+        SELECT COUNT(*)::int AS count FROM alerts
+        WHERE dispatched = false
+          AND incident_id IN (SELECT id FROM incidents WHERE user_id = ${uid})
       `),
       db.execute(sql`
         SELECT
@@ -25,7 +33,7 @@ export async function GET() {
           severity,
           COUNT(*)::int AS count
         FROM logs
-        WHERE created_at >= NOW() - INTERVAL '24 hours'
+        WHERE created_at >= NOW() - INTERVAL '24 hours' AND user_id = ${uid}
         GROUP BY date_trunc('hour', created_at), hour, severity
         ORDER BY date_trunc('hour', created_at) ASC
       `),
