@@ -4,7 +4,12 @@ from crewai.project import CrewBase, agent, crew, task
 from .tools.log_tools import get_past_incidents, semantic_search
 
 def _get_llm() -> LLM:
-    return LLM(model="groq/llama-3.1-8b-instant")
+    import os
+    return LLM(
+        model="openai/llama-3.1-8b-instant",
+        base_url="https://api.groq.com/openai/v1",
+        api_key=os.environ.get("GROQ_API_KEY"),
+    )
 
 
 @CrewBase
