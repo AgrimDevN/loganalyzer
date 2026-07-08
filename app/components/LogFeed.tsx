@@ -72,6 +72,12 @@ export function LogFeed() {
   async function runDemo() {
     setDemoRunning(true);
     setDemoProgress(0);
+    // Clear previous data for this user before replaying
+    await fetch("/api/user/data", { method: "DELETE" });
+    setLogs([]);
+    setTotal(0);
+    seenIds.current.clear();
+    bufRef.current = [];
     try {
       const res = await fetch("/demo-logs.json");
       const demoLogs: DemoLog[] = await res.json();
