@@ -20,6 +20,7 @@ export function LogFeed() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const pausedRef = useRef(false);
   const bufRef = useRef<Log[]>([]);
+  const seenIds = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     pausedRef.current = paused;
@@ -30,9 +31,24 @@ export function LogFeed() {
   }, [paused]);
 
   useEffect(() => {
+    // Load recent history first so logs persist across navigations
+    fetch("/api/logs/recent?limit=100")
+      .then((r) => r.json())
+      .then((recent: Log[]) => {
+        // DB returns newest-first; reverse so oldest appears at top
+        const ordered = [...recent].reverse();
+        for (const log of ordered) seenIds.current.add(log.id);
+        setLogs(ordered);
+        setTotal(ordered.length);
+      })
+      .catch(() => {});
+
     const es = new EventSource("/api/logs/stream");
     es.onmessage = (e) => {
       const log = JSON.parse(e.data) as Log;
+      // Skip logs already loaded from history to avoid duplicates
+      if (seenIds.current.has(log.id)) return;
+      seenIds.current.add(log.id);
       setTotal((c) => c + 1);
       if (pausedRef.current) bufRef.current.push(log);
       else setLogs((p) => [...p, log].slice(-800));
