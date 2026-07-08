@@ -65,6 +65,20 @@ function triggerAnalysis(logTimestamp: Date, userId: number) {
   );
 }
 
+async function embedMessages(messages: string[]): Promise<(number[] | null)[]> {
+  try {
+    const response = await fetch(`${AGENT_URL}/embed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(messages),
+    });
+    if (!response.ok) return messages.map(() => null);
+    return await response.json();
+  } catch {
+    return messages.map(() => null);
+  }
+}
+
 export async function POST(request: NextRequest) {
   const userId = await resolveUserId(request);
   if (userId === null) {
@@ -89,16 +103,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const embeddings = await embedMessages(validEntries.map((e) => e.message));
+
   const inserted = await db
     .insert(logs)
     .values(
-      validEntries.map((entry) => ({
+      validEntries.map((entry, i) => ({
         userId,
         serviceName: entry.serviceName,
         severity: entry.severity,
         message: entry.message,
         metadata: entry.metadata ?? null,
-        embedding: null,
+        embedding: embeddings[i] ?? null,
         createdAt: new Date(entry.timestamp),
       }))
     )

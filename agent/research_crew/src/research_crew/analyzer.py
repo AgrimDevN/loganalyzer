@@ -15,6 +15,7 @@ _lock = threading.Lock()
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 from research_crew.crew import LogAnalyzerCrew
+from research_crew.tools.log_tools import set_user_id
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
@@ -115,8 +116,7 @@ def run_analysis(start_time: str, end_time: str, user_id: int):
 
         print(f"[analyze] {len(logs)} logs ({len(elevated)} elevated) in window {start_time} – {end_time}", flush=True)
 
-        # Only send elevated logs to the crew — passing all 384 logs burns through
-        # token limits fast since each agent receives the full payload.
+        set_user_id(user_id)
         result = LogAnalyzerCrew().crew().kickoff(inputs={
             "startTime": start_time,
             "endTime": end_time,

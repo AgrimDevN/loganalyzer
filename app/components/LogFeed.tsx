@@ -19,8 +19,8 @@ type DemoLog = {
 };
 
 const SEV_ORDER = ["all", "critical", "error", "warning", "info", "debug"];
-const BATCH_SIZE = 10;
-const BATCH_DELAY_MS = 100;
+const BATCH_SIZE = 100;
+const BATCH_DELAY_MS = 200;
 
 export function LogFeed() {
   const [logs, setLogs] = useState<Log[]>([]);
