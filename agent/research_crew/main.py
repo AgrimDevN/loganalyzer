@@ -7,9 +7,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
+import litellm
 import httpx
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
+
+# Groq doesn't support cache_breakpoint (an Anthropic prompt-caching field
+# that CrewAI 1.15+ injects into system messages). Drop it silently.
+litellm.drop_params = True
 
 from research_crew.analyzer import run_analysis
 
