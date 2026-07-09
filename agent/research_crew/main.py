@@ -7,14 +7,24 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
-import litellm
 import httpx
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 
-# Groq doesn't support cache_breakpoint (an Anthropic prompt-caching field
-# that CrewAI 1.15+ injects into system messages). Drop it silently.
-litellm.drop_params = True
+# CrewAI 1.15+ injects cache_breakpoint into every system message for Anthropic
+# prompt caching. For non-Anthropic providers (Groq), _format_messages_for_provider
+# returns messages as-is with the field still present — Groq rejects it.
+# Patch the method to strip the field before it reaches the provider.
+try:
+    from crewai.llm import LLM as _LLM
+    from crewai.llms.cache import CACHE_BREAKPOINT_KEY as _CBP_KEY
+    _orig_fmt = _LLM._format_messages_for_provider
+    def _fmt_strip_cbp(self, messages):
+        result = _orig_fmt(self, messages)
+        return [{k: v for k, v in m.items() if k != _CBP_KEY} for m in result]
+    _LLM._format_messages_for_provider = _fmt_strip_cbp
+except Exception:
+    pass
 
 from research_crew.analyzer import run_analysis
 
